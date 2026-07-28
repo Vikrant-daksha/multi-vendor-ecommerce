@@ -26,6 +26,9 @@
     },
     {
       "path": "./apps/api-gateway"
+    },
+    {
+      "path": "./apps/user-ui"
     }
   ],
   "compilerOptions": {}
