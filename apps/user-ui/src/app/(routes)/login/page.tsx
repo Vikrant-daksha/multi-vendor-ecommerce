@@ -1,6 +1,8 @@
 "use client";
 
 import GoogleButton from "@/shared/components/google-button";
+import { useMutation } from "@tanstack/react-query";
+import axios, { AxiosError } from "axios";
 import { Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -22,8 +24,24 @@ const Login = () => {
 
     const { register, handleSubmit, formState: { errors } } = useForm<FormData>();
 
-    const onSubmit = (data: FormData) => {
+    const loginMutation = useMutation({
+        mutationFn: async (data: FormData) => {
+            const response = await axios.post(`${process.env.NEXT_PUBLIC_SERVER_URI}/api/login-user`, data, { withCredentials: true });
+            return response.data;
+        },
+        onSuccess: (data) => {
+            setServerError(null);
+            router.push("/");
+        },
+        onError: (error: AxiosError) => {
+            console.log(error.response?.data);
+            const errorMessage = (error.response?.data as { message?: string })?.message || "Invalid Credentials!";
+            setServerError(errorMessage);
+        }
+    })
 
+    const onSubmit = (data: FormData) => {
+        loginMutation.mutate(data);
     };
 
     return (
@@ -94,12 +112,12 @@ const Login = () => {
                                 Forgot Password?
                             </Link>
                         </div>
-                        <button type="submit" className="w-full text-lg cursor-pointer bg-black text-white py-2 rounded-lg">
-                            Login
+                        <button type="submit" disabled={loginMutation.isPending} className="w-full text-lg cursor-pointer bg-black text-white py-2 rounded-lg">
+                            {loginMutation?.isPending ? "Logging In..." : "Login"}
                         </button>
 
                         {serverError && (
-                            <p className="text-red-500 text-sm text-center mt-3">
+                            <p className="text-red-500 text-sm text-left font-semibold mt-3">
                                 {serverError}
                             </p>
                         )}

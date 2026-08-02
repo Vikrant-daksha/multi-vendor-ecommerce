@@ -1,0 +1,6 @@
+@import 'tailwindcss';
+
+:root {
+  --font-roboto: var(--font-roboto);
+  --font-poppins: var(--font-poppins);
+}

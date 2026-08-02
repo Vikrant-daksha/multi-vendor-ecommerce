@@ -5,6 +5,6 @@ export default function Index() {
    * Note: The corresponding styles are in the ./index.none file.
    */
   return (
-    <div className=""></div>
+    <div className="mb-[200vh]"></div>
   );
 }
