@@ -3,11 +3,12 @@
 import { useMutation } from '@tanstack/react-query';
 import { Eye, EyeOff } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import axios, { AxiosError } from 'axios';
 import { countries } from '@/utils/countries';
+import CreateShop from '@/shared/modules/auth/create-shop';
+import { StripeLogo } from '../../../assets/svgs/stripe-logo';
 
 type FormData = {
   name: string;
@@ -25,10 +26,10 @@ const SignUp = () => {
   const [canResend, setCanResend] = useState(true);
   const [timer, setTimer] = useState(60);
   const [otp, setOtp] = useState(['', '', '', '']);
-  const [userData, setUserData] = useState<FormData | null>(null);
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const [sellerData, setSellerData] = useState<FormData | null>(null);
+  const [sellerId, setSellerId] = useState('');
 
-  const router = useRouter();
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const {
     register,
@@ -52,13 +53,13 @@ const SignUp = () => {
   const signupMutation = useMutation({
     mutationFn: async (data: FormData) => {
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_SERVER_URI}/api/user-registeration`,
+        `${process.env.NEXT_PUBLIC_SERVER_URI}/api/seller-registeration`,
         data,
       );
       return response.data;
     },
     onSuccess: (_, formData) => {
-      setUserData(formData);
+      setSellerData(formData);
       setShowOtp(true);
       setCanResend(false);
       setTimer(60);
@@ -68,15 +69,17 @@ const SignUp = () => {
 
   const verifyOtpMutation = useMutation({
     mutationFn: async () => {
-      if (!userData) return;
+      if (!sellerData) return;
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_SERVER_URI}/api/verify-user`,
-        { ...userData, otp: otp.join('') },
+        `${process.env.NEXT_PUBLIC_SERVER_URI}/api/verify-seller`,
+        { ...sellerData, otp: otp.join('') },
       );
       return response.data;
     },
-    onSuccess: () => {
-      router.push('/login');
+    onSuccess: (data) => {
+      console.log(data);
+      setSellerId(data?.seller?._id);
+      setActiveStep(2);
     },
   });
 
@@ -107,10 +110,29 @@ const SignUp = () => {
   };
 
   const resendOtp = () => {
-    if (userData) {
-      signupMutation.mutate(userData);
+    if (sellerData) {
+      signupMutation.mutate(sellerData);
     }
   };
+
+  const connectStripe = async () => {
+    try {
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_SERVER_URI}/api/create-stripe-link`,
+        { sellerId },
+      );
+
+      if (response.data.url) {
+        window.location.href = response.data.url;
+      }
+    } catch (error) {
+      console.log('Stripe Connection Error: ', error);
+    }
+  };
+
+  useEffect(() => {
+    console.log(sellerId);
+  }, [sellerId]);
 
   return (
     <div className="w-full flex flex-col items-center pt-10 min-h-screen">
@@ -325,6 +347,22 @@ const SignUp = () => {
               </div>
             )}
           </>
+        )}
+        {activeStep === 2 && (
+          <CreateShop sellerId={sellerId} setActiveStep={setActiveStep} />
+        )}
+        {activeStep === 3 && (
+          <div className="text-center">
+            <h3 className="text-2xl font-semibold">Withdraw Method</h3>
+            <br></br>
+            <button
+              className="w-full m-auto flex items-center justify-center gap-3 text-lg bg-[#334155] text-white py-3 rounded-lg"
+              onClick={connectStripe}
+            >
+              <StripeLogo />
+              Connect Stripe
+            </button>
+          </div>
         )}
       </div>
     </div>

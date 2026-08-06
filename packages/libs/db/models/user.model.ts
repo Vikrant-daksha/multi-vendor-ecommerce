@@ -50,17 +50,45 @@ export const UserModel =
 
 // ── Shop ─────────────────────────────────────────────────────────────────────
 
+export interface ShopReview extends Document {
+  userId: mongoose.Types.ObjectId;
+  users: string[];
+  rating: number;
+  review: string;
+  createdAt: Date;
+  updatedAt: Date;
+  shopId: mongoose.Types.ObjectId[];
+}
+
 export interface IShop extends Document {
   name: string;
   bio?: string;
   category: string;
   avatar?: mongoose.Types.ObjectId; // ref to Image _id
   sellerId: mongoose.Types.ObjectId; // Single owner of this shop
+  coverBanner?: string;
+  address: string;
+  openingHours: string;
+  website?: string;
+  socialLinks?: Record<string, any>[];
+  ratings: number;
+  reviews: ShopReview[];
   createdAt: Date;
   updatedAt: Date;
 }
 
 export type IShops = IShop; // Backwards compatibility alias
+
+const ShopReviewSchema = new Schema<ShopReview>(
+  {
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    users: { type: [String], default: [] },
+    rating: { type: Number, required: true },
+    review: { type: String, required: true },
+    shopId: [{ type: Schema.Types.ObjectId, ref: 'Shop' }],
+  },
+  { timestamps: true },
+);
 
 const ShopSchema = new Schema<IShop>(
   {
@@ -68,7 +96,19 @@ const ShopSchema = new Schema<IShop>(
     bio: { type: String },
     category: { type: String },
     avatar: { type: Schema.Types.ObjectId, ref: 'Image' },
-    sellerId: { type: Schema.Types.ObjectId, ref: 'Seller', required: true },
+    sellerId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Seller',
+      required: true,
+      unique: true,
+    },
+    coverBanner: { type: String },
+    address: { type: String },
+    openingHours: { type: String },
+    website: { type: String },
+    socialLinks: { type: [Schema.Types.Mixed], default: [] },
+    ratings: { type: Number, default: 0 },
+    reviews: { type: [ShopReviewSchema], default: [] },
   },
   { timestamps: true },
 );
@@ -98,10 +138,20 @@ const SellerSchema = new Schema<ISeller>(
     country: { type: String, required: true },
     password: { type: String, required: true },
     stripeId: { type: String },
-    shops: [{ type: Schema.Types.ObjectId, ref: 'Shop', default: [] }],
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  },
 );
+
+SellerSchema.virtual('shops', {
+  ref: 'Shop',
+  localField: '_id',
+  foreignField: 'sellerId',
+  justOne: false,
+});
 
 export const SellerModel =
   mongoose.models.Seller || mongoose.model<ISeller>('Seller', SellerSchema);

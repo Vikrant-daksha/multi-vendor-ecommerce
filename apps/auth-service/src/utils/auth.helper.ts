@@ -4,6 +4,11 @@ import { Request, Response, NextFunction } from 'express';
 import redis from '../../../../packages/libs/redis';
 import { sendEmail } from './send-mail';
 import { UserModel } from '../../../../packages/libs/prisma';
+import {
+  SellerModel,
+  ShopModel,
+} from '../../../../packages/libs/db/models/user.model';
+import bcrypt from 'bcryptjs';
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -118,7 +123,10 @@ export const handleForgotPassword = async (
 
     // Find User/Seller in DB
 
-    const user = userType === 'user' && (await UserModel.findOne({ email }));
+    const user =
+      userType === 'user'
+        ? await UserModel.findOne({ email })
+        : await SellerModel.findOne({ email });
 
     if (!user) throw new ValidationError(`${userType} doesn't Exists!`);
 
@@ -127,7 +135,13 @@ export const handleForgotPassword = async (
     await trackOtpRequests(email, next);
 
     // Generate OTP
-    await sendOtp(user.name, email, 'forgot-password-user-mail');
+    await sendOtp(
+      user.name,
+      email,
+      userType === 'user'
+        ? 'forgot-password-user-mail'
+        : 'forgot-password-seller-mail',
+    );
 
     res.status(200).json({
       message: `OTP Send to Email. Please verify Your Account.`,
@@ -156,5 +170,103 @@ export const verifyUserForgotPasswordOTP = async (
     });
   } catch (err) {
     return next(err);
+  }
+};
+
+//Verify Seller OTP
+export const verifySeller = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { email, otp, password, name, phone_number, country } = req.body;
+
+    if (!email || !otp || !password || !name || !phone_number || !country) {
+      throw new ValidationError('All Fields are Required!');
+    }
+
+    const existingSeller = await ShopModel.findOne({ email });
+
+    if (existingSeller) {
+      throw new ValidationError('Seller Already exists with this email!');
+    }
+
+    await verifyOtp(email, otp, next);
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const seller = await SellerModel.create({
+      name,
+      email,
+      password: hashedPassword,
+      country,
+      phone_number,
+    });
+
+    res.status(200).json({ seller });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Create A Shop
+export const createShop = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const {
+      name,
+      bio,
+      address,
+      opening_hours,
+      website,
+      category,
+      sellerId,
+      social_links,
+    } = req.body;
+
+    console.log(req.body);
+
+    if (!name || !bio || !address || !category || !sellerId) {
+      throw new ValidationError('All Fields Are Required!');
+    }
+
+    const shopData: any = {
+      name: name,
+      bio: bio,
+      address: address,
+      opening_hours: opening_hours,
+      category: category,
+      sellerId: sellerId,
+    };
+
+    if (website && website.trim() != '') {
+      shopData.website = website;
+    }
+
+    const shop = await ShopModel.create(shopData);
+
+    await SellerModel.findByIdAndUpdate(sellerId, {
+      $push: { shops: shop._id },
+    });
+
+    res.status(200).json({ sucess: true, shop });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Create Stripe Connect Account Link for Seller
+export const createStripeConnectAccountLink = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { sellerId, refresh_url, return_url, type } = req.body;
+  } catch (error) {
+    next(error);
   }
 };

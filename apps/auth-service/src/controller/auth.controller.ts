@@ -8,7 +8,11 @@ import {
   verifyOtp,
   verifyUserForgotPasswordOTP,
 } from '../utils/auth.helper.js';
-import { UserModel } from '../../../../packages/libs/db/models/user.model.js';
+import {
+  SellerModel,
+  ShopModel,
+  UserModel,
+} from '../../../../packages/libs/db/models/user.model.js';
 import {
   AuthError,
   ValidationError,
@@ -16,6 +20,11 @@ import {
 import bcrypt from 'bcryptjs';
 import jwt, { JsonWebTokenError } from 'jsonwebtoken';
 import { setCookie } from '../utils/cookies/setCookies.js';
+import Stripe from 'stripe';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: '2026-07-29.dahlia',
+});
 
 // Register a New User
 
@@ -102,9 +111,12 @@ export const loginUser = async (
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) throw new AuthError(`Invalid Email or Password!`);
 
+    res.clearCookie('seller_access_token');
+    res.clearCookie('seller_refresh_token');
+
     // Generate Access Token
     const accessToken = jwt.sign(
-      { id: user.id, role: 'User' },
+      { id: user.id, role: 'user' },
       process.env.ACCESS_TOKEN_SECRET as string,
       {
         expiresIn: '15m',
@@ -113,7 +125,7 @@ export const loginUser = async (
 
     // Refresh Token
     const refreshToken = jwt.sign(
-      { id: user.id, role: 'User' },
+      { id: user.id, role: 'user' },
       process.env.REFRESH_TOKEN_SECRET as string,
       {
         expiresIn: '7d',
@@ -133,14 +145,17 @@ export const loginUser = async (
   }
 };
 
-//Refresh Token User
+//Refresh Token
 export const refreshToken = async (
   req: Request,
   res: Response,
   next: NextFunction,
 ) => {
   try {
-    const refreshToken = req.cookies.refresh_token;
+    const refreshToken =
+      req.cookies['refresh_token'] ||
+      req.cookies['seller_refresh_token'] ||
+      req.headers.authorization?.split(' ')[1];
 
     if (!refreshToken) {
       throw new ValidationError('Unauthorized! No Refresh Token.');
@@ -155,23 +170,31 @@ export const refreshToken = async (
       throw new JsonWebTokenError('FORBIDDEN! Invalid refresh token.');
     }
 
-    // let account;
-    // if (decoded.role === "User") {
-    // }
+    let account;
+    if (decoded.role === 'user') {
+      account = await UserModel.findById(decoded.id);
+    }
 
-    const user = await UserModel.findById(decoded.id);
+    if (decoded.role === 'seller') {
+      account = await SellerModel.findById(decoded.id);
+    }
 
-    if (!user) {
+    if (!account) {
       throw new AuthError('FORBIDDEN! User/Seller not Found!');
     }
 
-    const newAccessToken = await jwt.sign(
+    const newAccessToken = jwt.sign(
       { id: decoded.id, role: decoded.role },
       process.env.ACCESS_TOKEN_SECRET as string,
       { expiresIn: '15m' },
     );
 
-    setCookie(res, 'access_token', newAccessToken);
+    if (decoded.role === 'user') {
+      setCookie(res, 'access_token', newAccessToken);
+    } else if (decoded.role === 'seller') {
+      setCookie(res, 'seller_access_token', newAccessToken);
+    }
+
     return res.status(200).json({ success: true });
   } catch (error) {
     return next(error);
@@ -194,7 +217,7 @@ export const userForgotPassword = async (
   res: Response,
   next: NextFunction,
 ) => {
-  await handleForgotPassword(req, res, next, 'User');
+  await handleForgotPassword(req, res, next, 'user');
 };
 
 // Verify Forgot Password OTP
@@ -252,7 +275,140 @@ export const registerSeller = async (
   try {
     validationRegisterationData(req.body, 'seller');
     const { name, email } = req.body;
+
+    const existingSeller = await SellerModel.findOne({ email });
+
+    if (existingSeller) {
+      throw new ValidationError('Seller Already Exists with this email');
+    }
+
+    await checkOtpRestrictions(email, next);
+    await trackOtpRequests(email, next);
+    await sendOtp(name, email, 'seller-activation');
+
+    res.status(200).json({
+      success: true,
+      message: 'OTP sent to Your Email. Please Verify Your Account.',
+    });
   } catch (error) {
     return next(error);
+  }
+};
+
+//Seller Strip Link Creation
+export const createStripeConnectLink = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { sellerId } = req.body;
+
+    if (!sellerId) {
+      throw new ValidationError(`Seller Id is Required`);
+    }
+
+    const seller = await SellerModel.findById(sellerId);
+
+    if (!seller) {
+      throw new ValidationError(`Seller is Not Available with this ID!`);
+    }
+
+    const account = await stripe.account.create({
+      type: 'express',
+      email: seller?.email,
+      country: 'GB',
+      capabilities: {
+        card_payments: { requested: true },
+        transfers: { requested: true },
+      },
+    });
+
+    await SellerModel.updateOne(
+      { _id: sellerId },
+      { $set: { stripeId: account.id } },
+    );
+
+    const accountLink = await stripe.accountLinks.create({
+      account: account?.id,
+      refresh_url: `http://localhost:3000/success`,
+      return_url: `http://localhost:3000/success`,
+      type: 'account_onboarding',
+    });
+
+    res.status(200).json({
+      success: true,
+      url: accountLink.url,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+//Login Seller
+export const loginSeller = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      throw new ValidationError(`Email and Password are Required to Login!`);
+    }
+
+    const seller = await SellerModel.findOne({ email });
+
+    if (!seller) throw new ValidationError(`Seller doesnt Exists`);
+
+    const isMatch = await bcrypt.compare(password, seller.password);
+    if (!isMatch) throw new AuthError(`Invalid Email or Password!`);
+
+    res.clearCookie('access_token');
+    res.clearCookie('refresh_token');
+
+    // Generate Access Token
+    const accessToken = jwt.sign(
+      { id: seller.id, role: 'seller' },
+      process.env.ACCESS_TOKEN_SECRET as string,
+      {
+        expiresIn: '15m',
+      },
+    );
+
+    // Refresh Token
+    const refreshToken = jwt.sign(
+      { id: seller.id, role: 'seller' },
+      process.env.REFRESH_TOKEN_SECRET as string,
+      {
+        expiresIn: '7d',
+      },
+    );
+
+    // Store Token in httpOnly Secure cookie
+    setCookie(res, 'seller_refresh_token', refreshToken);
+    setCookie(res, 'seller_access_token', accessToken);
+
+    res.status(200).json({
+      message: `Login Successful`,
+      user: { id: seller.id, email: seller.email, name: seller.name },
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+//Get Logged In Seller
+export const getSeller = async (
+  req: any,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const seller = req.seller;
+    res.status(200).json({ success: true, seller });
+  } catch (error) {
+    next(error);
   }
 };

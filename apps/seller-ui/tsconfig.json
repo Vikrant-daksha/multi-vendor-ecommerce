@@ -22,10 +22,11 @@
       "@/*": ["./src/*"]
     },
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": "../../",
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
   "include": [
+    "../../packages/**/*.tsx",
     "src/**/*.ts",
     "src/**/*.tsx",
     "src/**/*.js",
