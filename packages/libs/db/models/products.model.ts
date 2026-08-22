@@ -132,3 +132,26 @@ const ProductSchema = new Schema<IProduct>(
 
 export const ProductModel =
   mongoose.models.Product || mongoose.model<IProduct>('Product', ProductSchema);
+
+export interface ISiteConfig extends Document {
+  categories: string[];
+  subCategories: JSON;
+}
+
+const SiteConfigSchema = new Schema<ISiteConfig>(
+  {
+    categories: {
+      type: [String],
+      default: [],
+    },
+    subCategories: {
+      type: Schema.Types.Mixed,
+      default: {},
+    },
+  },
+  { timestamps: true },
+);
+
+export const SiteConfigModel =
+  mongoose.models.SiteConfig ||
+  mongoose.model<ISiteConfig>('SiteConfig', SiteConfigSchema);

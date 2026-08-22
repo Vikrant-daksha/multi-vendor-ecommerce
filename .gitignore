@@ -58,3 +58,15 @@ test-output
 # Next.js
 .next
 out
+
+.agents
+.claude
+.codex
+.cursor
+.gemini
+.github
+.opencode
+.vscode
+.windsurf
+
+*.md

@@ -7,25 +7,29 @@ import rateLimit from 'express-rate-limit';
 import swaggerUi from 'swagger-ui-express';
 import axios from 'axios';
 import cookieParser from 'cookie-parser';
+import intializeConfig from './libs/initializeSiteConfig';
+import { connectDB } from '../../../packages/libs/db/connection';
 
 const app = express();
 
-app.use(cors({
-  origin: "http://localhost:3000",
-  allowedHeaders: ["Authorization", "Content-Type"],
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: 'http://localhost:3000',
+    allowedHeaders: ['Authorization', 'Content-Type'],
+    credentials: true,
+  }),
+);
 
-app.use(morgan("dev"));
-app.use(express.json({ limit: "100mb" }));
-app.use(express.urlencoded({ limit: "100mb", extended: true }));
+app.use(morgan('dev'));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 app.use(cookieParser());
-app.set("trust proxy", "1");
+app.set('trust proxy', '1');
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: (req: any) => (req.user ? 1000 : 100),
-  message: { error: "Too Many Requests, Please Try Again Later..." },
+  message: { error: 'Too Many Requests, Please Try Again Later...' },
   standardHeaders: true,
   legacyHeaders: true,
   keyGenerator: (req: any) => req.ip,
@@ -37,10 +41,20 @@ app.get('/gateway-health', (req, res) => {
   res.send({ message: 'Welcome to api-gateway!' });
 });
 
-app.use("/", proxy("http://localhost:6001"));
+app.use('/product', proxy('http://localhost:6002'));
+app.use('/', proxy('http://localhost:6001'));
 
 const port = process.env.PORT || 8080;
-const server = app.listen(port, () => {
-  console.log(`Listening at http://localhost:${port}/api`);
+
+connectDB().then(async () => {
+  const server = app.listen(port, async () => {
+    console.log(`Listening at http://localhost:${port}/api`);
+    try {
+      await intializeConfig();
+      console.log('Site Config Intialized Successfully!');
+    } catch (error) {
+      console.error('Failed to Intialize Site Config', error);
+    }
+  });
+  server.on('error', console.error);
 });
-server.on('error', console.error);

@@ -4,8 +4,7 @@
     "outDir": "dist",
     "types": ["node", "express"],
     "rootDir": "../../",
-    "tsBuildInfoFile": "dist/tsconfig.app.tsbuildinfo",
-    "resolveJsonModule": true
+    "tsBuildInfoFile": "dist/tsconfig.app.tsbuildinfo"
   },
   "include": [
     "src/**/*.ts",
@@ -13,12 +12,5 @@
     "src/**/*.json",
     "../../packages/**/*.ts"
   ],
-  "exclude": [
-    "out-tsc",
-    "dist",
-    "jest.config.ts",
-    "jest.config.cts",
-    "src/**/*.spec.ts",
-    "src/**/*.test.ts"
-  ]
+  "exclude": []
 }
