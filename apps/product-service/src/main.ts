@@ -4,6 +4,7 @@
  */
 
 import express from 'express';
+import './jobs/product-cron.job';
 import cors from 'cors';
 import { errorMiddleware } from '../../../packages/error-handler/error-middleware.js';
 import cookieParser from 'cookie-parser';
